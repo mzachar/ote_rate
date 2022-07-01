@@ -1,9 +1,19 @@
 """Platform for sensor integration."""
-from homeassistant.helpers.entity import Entity
-from homeassistant.components.sensor import (
-    DEVICE_CLASS_MONETARY,
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+
+from homeassistant.components.sensor import  (
     SensorEntity,
-    SensorEntityDescription,
+    SensorDeviceClass,
+    SensorStateClass,
+)
+
+from homeassistant.const import (
+    CURRENCY_EURO,
+    CURRENCY_DOLLAR,
+    ENERGY_MEGA_WATT_HOUR,
+    ENERGY_KILO_WATT_HOUR,
 )
 
 """ External Imports """
@@ -14,66 +24,32 @@ import logging
 
 
 """ Constants """
-NATIVE_UNIT_OF_MEASUREMENT = "EUR/mWh"
-DEVICE_CLASS = "monetary"
-
 _LOGGER = logging.getLogger(__name__)
 
-def setup_platform(hass, config, add_entities, discovery_info=None):
+def setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType) -> None:
     """Set up the sensor platform."""
     add_entities([OTERateSensor()], update_before_add=True)
 
 
 class OTERateSensor(SensorEntity):
     """Representation of a Sensor."""
+    
+    _attr_name = "Current OTE Energy Cost"
+    _attr_native_unit_of_measurement = f'{CURRENCY_EURO}/{ENERGY_KILO_WATT_HOUR}'
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_available = False
 
-    def __init__(self):
-        """Initialize the sensor."""
-        self._value = None
-        self._attr = None
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return 'Current OTE Energy Cost'
-
-    @property
-    def native_value(self):
-        """Return the native value of the sensor."""
-        return self._value
-
-    @property
-    def native_unit_of_measurement(self):
-        """Return the native unit of measurement."""
-        return NATIVE_UNIT_OF_MEASUREMENT
-
-    @property
-    def device_class(self):
-        """Return the device class of the sensor."""
-        return DEVICE_CLASS
-
-    @property
-    def extra_state_attributes(self):
-        """Return other attributes of the sensor."""
-        return self._attr
-
-    @property
-    def available(self):
-        """Return True if entity is available."""
-        return self._available
-
-    def update(self):
+    def update(self) -> None:
         """Fetch new state data for the sensor.
-
         This is the only method that should fetch new data for Home Assistant.
+        
+        Parse the data and return value in EUR/kWh
         """
-        self._get_current_value()
-
-
-    def _get_current_value(self):
-        """ Parse the data and return value in EUR/kWh
-        """
-
         try:
           current_cost = 0
           cost_history = dict()
@@ -102,13 +78,13 @@ class OTERateSensor(SensorEntity):
               if values['title'] == cost_string:
                   for data in values['point']:
                      history_index = int(data[hour_axis])-1
-                     cost_history[history_index] = float(data[cost_axis])
+                     cost_history[history_index] = round(float(data[cost_axis]) / 1000, 4)
                   current_cost = cost_history[date.hour]
 
 
-          self._value = current_cost
-          self._attr = cost_history
-          self._available = True
+          self._attr_native_value = current_cost
+          self._attr_extra_state_attributes = cost_history
+          self._attr_available = True
         except:
-          self._available = False
+          self._attr_available = False
           _LOGGER.exception("Error occured while retrieving data from ote-cr.cz.")
